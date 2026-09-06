@@ -11,6 +11,12 @@ object LivingAiLog {
     private const val TAG = "LivingAI"
 
     fun event(type: String, message: String) {
-        Log.d(TAG, "[$type] $message")
+        try {
+            Log.d(TAG, "[$type] $message")
+        } catch (_: RuntimeException) {
+            // android.util.Log is unavailable in plain JVM unit tests (no Robolectric) —
+            // fall back so test runs don't crash on logging alone.
+            println("$TAG [$type] $message")
+        }
     }
 }
