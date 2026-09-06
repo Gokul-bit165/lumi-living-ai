@@ -54,8 +54,21 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // Camera + Voice + local AI (Phase 9)
+    implementation("androidx.camera:camera-core:1.5.1")
+    implementation("androidx.camera:camera-camera2:1.5.1")
+    implementation("androidx.camera:camera-lifecycle:1.5.1")
+    implementation("androidx.camera:camera-view:1.5.1")
+    // Real, ungated, bundled-model on-device OCR (no download step, works offline immediately).
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Real on-device LLM runtime (Google AI Edge / MediaPipe LLM Inference API).
+    implementation("com.google.mediapipe:tasks-genai:0.10.21")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    // Android's org.json stub throws "not mocked" outside an instrumented runtime — this
+    // provides a real implementation so InferenceRouter's JSON parsing is genuinely testable.
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

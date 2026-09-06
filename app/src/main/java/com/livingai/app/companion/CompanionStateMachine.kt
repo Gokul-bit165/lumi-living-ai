@@ -1,5 +1,7 @@
 package com.livingai.app.companion
 
+import com.livingai.app.ai.model.AIResponse
+import com.livingai.app.ai.model.CompanionEmotion
 import com.livingai.app.context.MovementState
 import com.livingai.app.context.UserContext
 import com.livingai.app.core.LivingAiLog
@@ -94,6 +96,45 @@ class CompanionStateMachine(private val scope: CoroutineScope) {
 
     fun onTap() {
         _state.value = _state.value.copy(expanded = !_state.value.expanded)
+    }
+
+    // --- Camera + Voice + AI lifecycle reactions (Phase 9) ---
+
+    fun onCameraOpened() = pinIndefinite(CompanionActivity.CAMERA_HELP)
+
+    fun onCameraClosed() {
+        if (pinnedActivity == CompanionActivity.CAMERA_HELP) {
+            pinnedActivity = null
+            lastContext?.let { evaluate(it) }
+        }
+    }
+
+    fun onListening() = pinIndefinite(CompanionActivity.LISTENING)
+
+    fun onThinking() = pinIndefinite(CompanionActivity.THINKING)
+
+    /** User cancelled mid-listen or mid-inference; drop back to whatever context/focus dictates. */
+    fun onAiCancelled() {
+        if (pinnedActivity == CompanionActivity.LISTENING || pinnedActivity == CompanionActivity.THINKING) {
+            pinnedActivity = null
+            lastContext?.let { evaluate(it) }
+        }
+    }
+
+    fun onAiResult(response: AIResponse) {
+        val activity = when (response.emotion) {
+            CompanionEmotion.THINKING -> CompanionActivity.THINKING
+            CompanionEmotion.EXPLAINING -> CompanionActivity.EXPLAINING
+            CompanionEmotion.HAPPY -> CompanionActivity.HAPPY
+            CompanionEmotion.CONFUSED -> CompanionActivity.CONFUSED
+            CompanionEmotion.WARNING -> CompanionActivity.WARNING
+        }
+        pinTransient(activity, response.text, durationMs = 12_000L, autoExpand = true)
+    }
+
+    private fun pinIndefinite(activity: CompanionActivity, message: String? = null) {
+        pinnedActivity = activity
+        _state.value = _state.value.copy(activity = activity, message = message, expanded = message != null)
     }
 
     private fun pinTransient(activity: CompanionActivity, message: String?, durationMs: Long = TRANSIENT_MOOD_MS, autoExpand: Boolean = false) {

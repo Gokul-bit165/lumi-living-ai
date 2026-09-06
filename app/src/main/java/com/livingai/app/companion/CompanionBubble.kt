@@ -75,6 +75,11 @@ private fun CompanionActivity.color(): Color = when (this) {
     CompanionActivity.STUDYING -> Color(0xFF3F51B5)
     CompanionActivity.RESTING -> Color(0xFF26A69A)
     CompanionActivity.CELEBRATING -> Color(0xFFEC407A)
+    CompanionActivity.LISTENING -> Color(0xFF29B6F6)
+    CompanionActivity.THINKING -> Color(0xFF7E57C2)
+    CompanionActivity.EXPLAINING -> Color(0xFF00897B)
+    CompanionActivity.CAMERA_HELP -> Color(0xFF5C6BC0)
+    CompanionActivity.CONFUSED -> Color(0xFFBDBDBD)
 }
 
 private fun CompanionActivity.emoji(): String = when (this) {
@@ -87,4 +92,9 @@ private fun CompanionActivity.emoji(): String = when (this) {
     CompanionActivity.STUDYING -> "📚"
     CompanionActivity.RESTING -> "😌"
     CompanionActivity.CELEBRATING -> "🎉"
+    CompanionActivity.LISTENING -> "👂"
+    CompanionActivity.THINKING -> "🤔"
+    CompanionActivity.EXPLAINING -> "💡"
+    CompanionActivity.CAMERA_HELP -> "📷"
+    CompanionActivity.CONFUSED -> "😕"
 }

@@ -1,12 +1,19 @@
 package com.livingai.app
 
 import android.app.Application
+import com.livingai.app.ai.inference.LocalTextModel
+import com.livingai.app.ai.inference.MediaPipeLocalTextModel
+import com.livingai.app.ai.routing.InferenceRouter
+import com.livingai.app.ai.vision.LocalVisionModel
+import com.livingai.app.ai.vision.MlKitLocalVisionModel
+import com.livingai.app.camera.CameraCaptureController
 import com.livingai.app.companion.CompanionOverlayController
 import com.livingai.app.companion.CompanionStateMachine
 import com.livingai.app.companion.InAppCompanionOverlayController
 import com.livingai.app.context.ContextEngine
 import com.livingai.app.context.ContextEngineImpl
 import com.livingai.app.core.BatteryMonitor
+import com.livingai.app.core.PerformanceMonitor
 import com.livingai.app.core.PermissionManager
 import com.livingai.app.core.ThermalMonitor
 import com.livingai.app.focus.AttentionManager
@@ -15,8 +22,11 @@ import com.livingai.app.focus.DistractionDetector
 import com.livingai.app.focus.FocusEngine
 import com.livingai.app.focus.FocusSessionManager
 import com.livingai.app.focus.GoalRepository
+import com.livingai.app.voice.AndroidSpeechRecognizer
+import com.livingai.app.voice.AndroidTextToSpeech
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * V1 uses a plain service locator instead of Hilt/Dagger: for a small hackathon app the
@@ -33,6 +43,8 @@ class LivingAiApp : Application() {
         private set
     lateinit var thermalMonitor: ThermalMonitor
         private set
+    lateinit var performanceMonitor: PerformanceMonitor
+        private set
     lateinit var contextEngine: ContextEngine
         private set
     lateinit var companionStateMachine: CompanionStateMachine
@@ -45,6 +57,18 @@ class LivingAiApp : Application() {
         private set
     lateinit var focusEngine: FocusEngine
         private set
+    lateinit var textModel: LocalTextModel
+        private set
+    lateinit var visionModel: LocalVisionModel
+        private set
+    lateinit var inferenceRouter: InferenceRouter
+        private set
+    lateinit var cameraCaptureController: CameraCaptureController
+        private set
+    lateinit var speechRecognizer: AndroidSpeechRecognizer
+        private set
+    lateinit var textToSpeech: AndroidTextToSpeech
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -52,6 +76,7 @@ class LivingAiApp : Application() {
         permissionManager = PermissionManager(this)
         batteryMonitor = BatteryMonitor(this, appScope)
         thermalMonitor = ThermalMonitor(this, appScope)
+        performanceMonitor = PerformanceMonitor(batteryMonitor, thermalMonitor, appScope)
         contextEngine = ContextEngineImpl(
             context = this,
             scope = appScope,
@@ -74,7 +99,19 @@ class LivingAiApp : Application() {
             companionStateMachine = companionStateMachine
         )
 
+        textModel = MediaPipeLocalTextModel(this)
+        visionModel = MlKitLocalVisionModel()
+        inferenceRouter = InferenceRouter(
+            textModel = textModel,
+            visionModel = visionModel,
+            runtimeStatus = { performanceMonitor.runtimeStatus.value }
+        )
+        cameraCaptureController = CameraCaptureController(this)
+        speechRecognizer = AndroidSpeechRecognizer(this)
+        textToSpeech = AndroidTextToSpeech(this)
+
         contextEngine.start()
         focusEngine.start()
+        appScope.launch { textModel.initialize() }
     }
 }

@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.livingai.app.ai.model.AIRequest
+import com.livingai.app.ai.model.AIRequestType
+import com.livingai.app.ai.ui.ModelSetupScreen
+import com.livingai.app.camera.ui.CameraHelpScreen
 import com.livingai.app.companion.CompanionBubble
 import com.livingai.app.context.UserContext
 import com.livingai.app.core.PermissionManager
@@ -42,6 +47,10 @@ class MainActivity : ComponentActivity() {
 
     private val requestActivityRecognition = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
+    ) { /* re-checked reactively via PermissionManager on next composition pass */ }
+
+    private val requestCameraAndMic = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { /* re-checked reactively via PermissionManager on next composition pass */ }
 
     private val hasUsageAccessState = mutableStateOf(false)
@@ -60,7 +69,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                LivingAiRoot(app, hasUsageAccessState.value)
+                LivingAiRoot(
+                    app = app,
+                    hasUsageAccess = hasUsageAccessState.value,
+                    onRequestCameraAndMic = {
+                        requestCameraAndMic.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                    }
+                )
             }
         }
     }
@@ -72,17 +87,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { HOME, FOCUS }
+private enum class Screen { HOME, FOCUS, CAMERA_HELP, MODEL_SETUP }
 
 @Composable
-private fun LivingAiRoot(app: LivingAiApp, hasUsageAccess: Boolean) {
+private fun LivingAiRoot(app: LivingAiApp, hasUsageAccess: Boolean, onRequestCameraAndMic: () -> Unit) {
     var screen by remember { mutableStateOf(Screen.HOME) }
     val context by app.contextEngine.currentContext.collectAsState()
     val companionState by app.companionStateMachine.state.collectAsState()
     val goal by app.goalRepository.activeGoal.collectAsState(initial = null)
     val session by app.focusSessionManager.session.collectAsState()
     val elapsedMs by app.focusSessionManager.elapsedMs.collectAsState()
+    val modelStatus by app.textModel.status.collectAsState()
     val scope = rememberCoroutineScope()
+
+    var isAiBusy by remember { mutableStateOf(false) }
+    var aiResultText by remember { mutableStateOf<String?>(null) }
+    var question by remember { mutableStateOf("") }
+    var lastAiResponse by remember { mutableStateOf<com.livingai.app.ai.model.AIResponse?>(null) }
 
     LaunchedEffect(context) {
         app.companionStateMachine.onContextChanged(context)
@@ -108,7 +129,16 @@ private fun LivingAiRoot(app: LivingAiApp, hasUsageAccess: Boolean) {
                         goal?.let { app.focusSessionManager.start(it.id) }
                         screen = Screen.FOCUS
                     },
-                    onResumeFocus = { screen = Screen.FOCUS }
+                    onResumeFocus = { screen = Screen.FOCUS },
+                    onOpenCameraHelp = {
+                        if (!app.permissionManager.hasCamera() || !app.permissionManager.hasRecordAudio()) {
+                            onRequestCameraAndMic()
+                        }
+                        app.companionStateMachine.onCameraOpened()
+                        screen = Screen.CAMERA_HELP
+                    },
+                    onOpenModelSetup = { screen = Screen.MODEL_SETUP },
+                    lastAiResponse = lastAiResponse
                 )
 
                 Screen.FOCUS -> FocusScreen(
@@ -121,6 +151,57 @@ private fun LivingAiRoot(app: LivingAiApp, hasUsageAccess: Boolean) {
                         app.focusSessionManager.end()
                         screen = Screen.HOME
                     },
+                    onBack = { screen = Screen.HOME }
+                )
+
+                Screen.CAMERA_HELP -> CameraHelpScreen(
+                    cameraController = app.cameraCaptureController,
+                    isBusy = isAiBusy,
+                    resultText = aiResultText,
+                    question = question,
+                    onQuestionChange = { question = it },
+                    onListen = {
+                        app.companionStateMachine.onListening()
+                        scope.launch {
+                            app.speechRecognizer.listenOnce()
+                                .onSuccess { transcript -> question = transcript }
+                            app.companionStateMachine.onAiCancelled()
+                        }
+                    },
+                    onSubmit = { imageBytes, questionText ->
+                        isAiBusy = true
+                        app.companionStateMachine.onThinking()
+                        scope.launch {
+                            val response = app.inferenceRouter.route(
+                                AIRequest(
+                                    type = if (imageBytes != null) AIRequestType.CAMERA_QUESTION else AIRequestType.VOICE_QUESTION,
+                                    userText = questionText,
+                                    imageBytes = imageBytes,
+                                    goalTitle = goal?.title,
+                                    focusActive = session?.status == FocusSessionStatus.RUNNING
+                                )
+                            )
+                            aiResultText = response.text
+                            lastAiResponse = response
+                            isAiBusy = false
+                            app.companionStateMachine.onAiResult(response)
+                            runCatching { app.textToSpeech.speak(response.text) }
+                        }
+                    },
+                    onBack = {
+                        app.cameraCaptureController.unbind()
+                        app.companionStateMachine.onCameraClosed()
+                        aiResultText = null
+                        question = ""
+                        screen = Screen.HOME
+                    }
+                )
+
+                Screen.MODEL_SETUP -> ModelSetupScreen(
+                    status = modelStatus,
+                    modelName = app.textModel.modelName,
+                    runtimeName = app.textModel.runtimeName,
+                    onDownload = { token -> scope.launch { app.textModel.downloadAndInitialize(token) } },
                     onBack = { screen = Screen.HOME }
                 )
             }
@@ -152,7 +233,10 @@ private fun HomeScreen(
     hasUsageAccess: Boolean,
     onSetGoal: (String) -> Unit,
     onStartFocus: () -> Unit,
-    onResumeFocus: () -> Unit
+    onResumeFocus: () -> Unit,
+    onOpenCameraHelp: () -> Unit,
+    onOpenModelSetup: () -> Unit,
+    lastAiResponse: com.livingai.app.ai.model.AIResponse?
 ) {
     var showDebug by remember { mutableStateOf(true) }
     var goalInput by remember { mutableStateOf("") }
@@ -190,6 +274,11 @@ private fun HomeScreen(
             }
         }
 
+        Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onOpenCameraHelp) { Text("Show Lumi") }
+            Button(onClick = onOpenModelSetup) { Text("AI brain settings") }
+        }
+
         if (!hasUsageAccess) {
             Column(modifier = Modifier.padding(top = 16.dp)) {
                 Text("Distraction detection needs usage access to see which app you're in.")
@@ -211,7 +300,7 @@ private fun HomeScreen(
         }
 
         if (showDebug) {
-            DebugPanel(context, app, goal, sessionStatus, elapsedMs, hasUsageAccess)
+            DebugPanel(context, app, goal, sessionStatus, elapsedMs, hasUsageAccess, lastAiResponse)
         }
     }
 }
@@ -223,9 +312,14 @@ private fun DebugPanel(
     goal: com.livingai.app.focus.Goal?,
     sessionStatus: FocusSessionStatus?,
     elapsedMs: Long,
-    hasUsageAccess: Boolean
+    hasUsageAccess: Boolean,
+    lastAiResponse: com.livingai.app.ai.model.AIResponse?
 ) {
     val permissionManager: PermissionManager = app.permissionManager
+    val modelStatus by app.textModel.status.collectAsState()
+    val runtimeStatus by app.performanceMonitor.runtimeStatus.collectAsState()
+    val localContext = LocalContext.current
+    val networkOn = remember(context.timestamp) { isNetworkAvailable(localContext) }
     Column(
         modifier = Modifier.padding(top = 16.dp).width(340.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -241,6 +335,27 @@ private fun DebugPanel(
         Text(text = "sourceSignals: ${context.sourceSignals.joinToString()}")
         Text(text = "activityRecognitionGranted: ${permissionManager.hasActivityRecognition()}")
         Text(text = "usageAccessGranted: $hasUsageAccess")
+        Text(text = "cameraGranted: ${permissionManager.hasCamera()}")
+        Text(text = "micGranted: ${permissionManager.hasRecordAudio()}")
         Text(text = "cooldownRemainingMs: ${app.focusEngine.cooldownRemainingMs()}")
+        Text(text = "runtimeStatus: $runtimeStatus")
+        Text(text = "MODEL: ${app.textModel.modelName}")
+        Text(text = "RUNTIME: ${app.textModel.runtimeName}")
+        Text(text = "MODEL_STATE: ${modelStatus.state}")
+        Text(text = "LOCAL: YES")
+        Text(text = "NETWORK: ${if (networkOn) "ON" else "OFF"}")
+        if (lastAiResponse != null) {
+            Text(text = "LAST_TIER: ${lastAiResponse.tier}")
+            Text(text = "LAST_LOAD_MS: ${lastAiResponse.loadMs}")
+            Text(text = "LAST_INFERENCE_MS: ${lastAiResponse.inferenceMs}")
+            Text(text = "LAST_STRUCTURED: ${lastAiResponse.wasStructured}")
+        }
     }
+}
+
+private fun isNetworkAvailable(context: android.content.Context): Boolean {
+    val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    val network = cm.activeNetwork ?: return false
+    val capabilities = cm.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }

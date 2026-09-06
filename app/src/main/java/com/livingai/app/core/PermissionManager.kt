@@ -38,4 +38,12 @@ class PermissionManager(private val context: Context) {
         Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+
+    fun hasCamera(): Boolean = ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.CAMERA
+    ) == PackageManager.PERMISSION_GRANTED
+
+    fun hasRecordAudio(): Boolean = ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.RECORD_AUDIO
+    ) == PackageManager.PERMISSION_GRANTED
 }

@@ -1,5 +1,8 @@
 package com.livingai.app.companion
 
+import com.livingai.app.ai.model.AIResponse
+import com.livingai.app.ai.model.CompanionEmotion
+import com.livingai.app.ai.model.ModelTier
 import com.livingai.app.context.DeviceState
 import com.livingai.app.context.MovementState
 import com.livingai.app.context.UserContext
@@ -132,5 +135,69 @@ class CompanionStateMachineTest {
         assertEquals(CompanionActivity.IDLE, state.activity)
         assertFalse(state.expanded)
         assertNull(state.message)
+    }
+
+    @Test
+    fun `opening camera pins CAMERA_HELP and closing it returns to context-driven state`() {
+        val machine = newMachine()
+        machine.onContextChanged(baseContext())
+        machine.onCameraOpened()
+        assertEquals(CompanionActivity.CAMERA_HELP, machine.state.value.activity)
+
+        machine.onCameraClosed()
+        assertEquals(CompanionActivity.IDLE, machine.state.value.activity)
+    }
+
+    @Test
+    fun `listening then thinking then a result walks through the expected moods`() {
+        val machine = newMachine()
+        machine.onContextChanged(baseContext())
+
+        machine.onListening()
+        assertEquals(CompanionActivity.LISTENING, machine.state.value.activity)
+
+        machine.onThinking()
+        assertEquals(CompanionActivity.THINKING, machine.state.value.activity)
+
+        val response = AIResponse(
+            text = "Here's how to solve it",
+            emotion = CompanionEmotion.EXPLAINING,
+            tier = ModelTier.LOCAL_TEXT,
+            wasStructured = true,
+            loadMs = 10,
+            inferenceMs = 900
+        )
+        machine.onAiResult(response)
+        val state = machine.state.value
+        assertEquals(CompanionActivity.EXPLAINING, state.activity)
+        assertEquals("Here's how to solve it", state.message)
+        assertTrue(state.expanded)
+    }
+
+    @Test
+    fun `cancelling during listening or thinking drops back to context-driven state`() {
+        val machine = newMachine()
+        machine.onContextChanged(baseContext())
+        machine.onListening()
+
+        machine.onAiCancelled()
+
+        assertEquals(CompanionActivity.IDLE, machine.state.value.activity)
+    }
+
+    @Test
+    fun `confused emotion maps to the CONFUSED activity`() {
+        val machine = newMachine()
+        machine.onContextChanged(baseContext())
+        val response = AIResponse(
+            text = "I'm not sure I understand.",
+            emotion = CompanionEmotion.CONFUSED,
+            tier = ModelTier.RULE,
+            wasStructured = false,
+            loadMs = 0,
+            inferenceMs = 0
+        )
+        machine.onAiResult(response)
+        assertEquals(CompanionActivity.CONFUSED, machine.state.value.activity)
     }
 }
