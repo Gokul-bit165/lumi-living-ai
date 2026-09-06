@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,7 +29,8 @@ import androidx.compose.ui.unit.dp
 fun CompanionBubble(
     state: CompanionState,
     onTap: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBackToFocus: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier,
@@ -41,11 +44,12 @@ fun CompanionBubble(
                     .padding(bottom = 8.dp)
                     .width(220.dp)
             ) {
-                Text(
-                    text = state.message.orEmpty(),
-                    modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(text = state.message.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                    if (state.activity == CompanionActivity.WARNING && onBackToFocus != null) {
+                        Row { TextButton(onClick = onBackToFocus) { Text("Back to focus") } }
+                    }
+                }
             }
         }
 
@@ -65,14 +69,22 @@ private fun CompanionActivity.color(): Color = when (this) {
     CompanionActivity.SLEEPING -> Color(0xFF9575CD)
     CompanionActivity.IDLE -> Color(0xFF6C4DFF)
     CompanionActivity.WALKING -> Color(0xFF4CAF50)
-    CompanionActivity.WARMING_UP -> Color(0xFFFFA726)
     CompanionActivity.WARNING -> Color(0xFFE53935)
+    CompanionActivity.HAPPY -> Color(0xFFFFC107)
+    CompanionActivity.DETERMINED -> Color(0xFFFF7043)
+    CompanionActivity.STUDYING -> Color(0xFF3F51B5)
+    CompanionActivity.RESTING -> Color(0xFF26A69A)
+    CompanionActivity.CELEBRATING -> Color(0xFFEC407A)
 }
 
 private fun CompanionActivity.emoji(): String = when (this) {
     CompanionActivity.SLEEPING -> "😴"
     CompanionActivity.IDLE -> "👻"
     CompanionActivity.WALKING -> "🚶"
-    CompanionActivity.WARMING_UP -> "⚙️"
-    CompanionActivity.WARNING -> "⚠️"
+    CompanionActivity.WARNING -> "😾"
+    CompanionActivity.HAPPY -> "😊"
+    CompanionActivity.DETERMINED -> "💪"
+    CompanionActivity.STUDYING -> "📚"
+    CompanionActivity.RESTING -> "😌"
+    CompanionActivity.CELEBRATING -> "🎉"
 }

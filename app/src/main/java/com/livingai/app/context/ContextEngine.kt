@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -89,16 +90,20 @@ class ContextEngineImpl(
     }
 
     private fun updateContext(transform: (UserContext) -> UserContext) {
-        val updated = transform(_currentContext.value).copy(
-            timestamp = System.currentTimeMillis(),
-            sourceSignals = buildList {
-                add("sensors")
-                if (permissionManager.hasUsageAccess()) add("usage_stats")
-                add("battery")
-                add("thermal")
-            }
-        )
-        _currentContext.value = updated
-        LivingAiLog.event("CONTEXT_EVENT", "context=$updated")
+        // Battery, thermal and usage updates can race on different coroutines; `update` applies
+        // the transform atomically (compare-and-set + retry) instead of a plain read-then-write,
+        // which was dropping concurrent updates.
+        _currentContext.update { current ->
+            transform(current).copy(
+                timestamp = System.currentTimeMillis(),
+                sourceSignals = buildList {
+                    add("sensors")
+                    if (permissionManager.hasUsageAccess()) add("usage_stats")
+                    add("battery")
+                    add("thermal")
+                }
+            )
+        }
+        LivingAiLog.event("CONTEXT_EVENT", "context=${_currentContext.value}")
     }
 }

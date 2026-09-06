@@ -52,17 +52,24 @@ class SensorSignalCollector(
 
         val (x, y, z) = event.values
         val magnitude = sqrt(x * x + y * y + z * z) - SensorManager.GRAVITY_EARTH
-        // Exponential moving average — smooths noise without buffering a window of samples.
-        runningMagnitude = 0.8f * runningMagnitude + 0.2f * kotlin.math.abs(magnitude)
+        // Exponential moving average, smoothed further than a naive EMA (alpha 0.1) because a
+        // phone at rest on a desk still reads ~0.1-0.3 m/s^2 of vibration/gravity-calibration
+        // noise, which was flickering STILL/WALKING every sample at a single 0.15 threshold.
+        runningMagnitude = 0.9f * runningMagnitude + 0.1f * kotlin.math.abs(magnitude)
         sampleCount++
 
         // Only re-classify (and only notify on change) every ~1s worth of samples, not per event.
         if (sampleCount % 5 != 0) return
 
-        val newState = when {
-            runningMagnitude < 0.15f -> MovementState.STILL
-            runningMagnitude < 1.2f -> MovementState.WALKING
-            else -> MovementState.ACTIVE
+        // Hysteresis: use a wider "stay still" band than the "become still" band so noise
+        // sitting right at the boundary doesn't cause rapid state flapping.
+        val newState = when (lastState) {
+            MovementState.STILL -> if (runningMagnitude > 0.5f) MovementState.WALKING else MovementState.STILL
+            else -> when {
+                runningMagnitude < 0.3f -> MovementState.STILL
+                runningMagnitude < 1.2f -> MovementState.WALKING
+                else -> MovementState.ACTIVE
+            }
         }
         if (newState != lastState) {
             lastState = newState

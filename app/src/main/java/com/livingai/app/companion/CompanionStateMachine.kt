@@ -4,6 +4,9 @@ import com.livingai.app.context.MovementState
 import com.livingai.app.context.UserContext
 import com.livingai.app.core.LivingAiLog
 import com.livingai.app.core.ThermalLevel
+import com.livingai.app.focus.FocusSession
+import com.livingai.app.focus.FocusSessionStatus
+import com.livingai.app.focus.InterventionDecision
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,10 +16,14 @@ import kotlinx.coroutines.launch
 
 private const val INACTIVITY_TO_SLEEP_MS = 3 * 60 * 1000L
 private const val LOW_BATTERY_THRESHOLD = 15
+private const val TRANSIENT_MOOD_MS = 2_500L
+private const val CELEBRATION_MS = 4_000L
 
 /**
- * Maps [UserContext] to a [CompanionState]. Rule-based on purpose — the character's mood must
- * never look random, it must be explainable from the context that produced it.
+ * Maps [UserContext] plus focus-session/intervention events to a [CompanionState]. Rule-based
+ * on purpose — the character's mood must never look random, it must be explainable from what
+ * produced it. This remains the single boundary other systems (FocusEngine) react through;
+ * they never touch [CompanionState] directly.
  */
 class CompanionStateMachine(private val scope: CoroutineScope) {
 
@@ -25,6 +32,12 @@ class CompanionStateMachine(private val scope: CoroutineScope) {
 
     private var lastNonStillAt = System.currentTimeMillis()
     private var lastContext: UserContext? = null
+    private var lastFocusSession: FocusSession? = null
+
+    /** Non-null while a transient/manual mood (warning, celebration, acknowledgement) overrides
+     * the normal context-driven mapping. Warnings clear via [dismissIntervention]; the rest
+     * clear themselves after a short timer. */
+    private var pinnedActivity: CompanionActivity? = null
 
     init {
         // Re-evaluate periodically so SLEEPING can trigger from time passing alone, not only
@@ -42,12 +55,68 @@ class CompanionStateMachine(private val scope: CoroutineScope) {
         evaluate(context)
     }
 
+    fun onFocusSessionChanged(session: FocusSession?) {
+        lastFocusSession = session
+        lastContext?.let { evaluate(it) }
+    }
+
+    fun onFocusStarted() {
+        pinTransient(CompanionActivity.DETERMINED, null)
+    }
+
+    fun onFocusCompleted(goalTitle: String?) {
+        pinTransient(CompanionActivity.CELEBRATING, CompanionMessages.forCelebration(goalTitle), durationMs = CELEBRATION_MS, autoExpand = true)
+        LivingAiLog.event("COMPANION_STATE", "FOCUS_SESSION completed -> CELEBRATING")
+    }
+
+    fun onGoalSet(goalTitle: String) {
+        pinTransient(CompanionActivity.HAPPY, "Got it — \"$goalTitle\". I'll remember that.", autoExpand = true)
+    }
+
+    fun onInterventionDecision(decision: InterventionDecision, goalTitle: String?) {
+        if (!decision.shouldInterrupt) return
+        pinnedActivity = CompanionActivity.WARNING
+        _state.value = _state.value.copy(
+            activity = CompanionActivity.WARNING,
+            message = CompanionMessages.forDistraction(decision.reason, goalTitle),
+            expanded = true
+        )
+        LivingAiLog.event("COMPANION_STATE", "activity -> WARNING (${decision.reason})")
+    }
+
+    /** User tapped "Back to focus" on an intervention bubble. */
+    fun dismissIntervention() {
+        if (pinnedActivity != CompanionActivity.WARNING) return
+        pinnedActivity = null
+        _state.value = _state.value.copy(expanded = false, message = null)
+        lastContext?.let { evaluate(it) }
+    }
+
+    fun onTap() {
+        _state.value = _state.value.copy(expanded = !_state.value.expanded)
+    }
+
+    private fun pinTransient(activity: CompanionActivity, message: String?, durationMs: Long = TRANSIENT_MOOD_MS, autoExpand: Boolean = false) {
+        pinnedActivity = activity
+        _state.value = _state.value.copy(activity = activity, message = message ?: _state.value.message, expanded = autoExpand || _state.value.expanded)
+        scope.launch {
+            delay(durationMs)
+            if (pinnedActivity == activity) {
+                pinnedActivity = null
+                lastContext?.let { evaluate(it) } ?: run { _state.value = _state.value.copy(message = null, expanded = false) }
+            }
+        }
+    }
+
     private fun evaluate(context: UserContext) {
+        if (pinnedActivity != null) return // a warning/celebration/acknowledgement is showing; don't overwrite it
+
         val now = System.currentTimeMillis()
         if (context.movementState != MovementState.STILL) {
             lastNonStillAt = now
         }
 
+        val session = lastFocusSession
         val next = when {
             context.deviceState.thermal == ThermalLevel.SEVERE ||
                 context.deviceState.thermal == ThermalLevel.CRITICAL_OR_WORSE ->
@@ -55,6 +124,9 @@ class CompanionStateMachine(private val scope: CoroutineScope) {
 
             context.deviceState.batteryLevel <= LOW_BATTERY_THRESHOLD && !context.deviceState.charging ->
                 CompanionActivity.WARNING to "Battery's low (${context.deviceState.batteryLevel}%)."
+
+            session?.status == FocusSessionStatus.RUNNING -> CompanionActivity.STUDYING to null
+            session?.status == FocusSessionStatus.PAUSED -> CompanionActivity.RESTING to null
 
             context.movementState == MovementState.WALKING || context.movementState == MovementState.ACTIVE ->
                 CompanionActivity.WALKING to null
@@ -70,9 +142,5 @@ class CompanionStateMachine(private val scope: CoroutineScope) {
             LivingAiLog.event("COMPANION_STATE", "activity -> ${updated.activity}")
         }
         _state.value = updated
-    }
-
-    fun onTap() {
-        _state.value = _state.value.copy(expanded = !_state.value.expanded)
     }
 }

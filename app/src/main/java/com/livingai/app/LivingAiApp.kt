@@ -9,6 +9,12 @@ import com.livingai.app.context.ContextEngineImpl
 import com.livingai.app.core.BatteryMonitor
 import com.livingai.app.core.PermissionManager
 import com.livingai.app.core.ThermalMonitor
+import com.livingai.app.focus.AttentionManager
+import com.livingai.app.focus.DataStoreGoalRepository
+import com.livingai.app.focus.DistractionDetector
+import com.livingai.app.focus.FocusEngine
+import com.livingai.app.focus.FocusSessionManager
+import com.livingai.app.focus.GoalRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 
@@ -33,6 +39,12 @@ class LivingAiApp : Application() {
         private set
     lateinit var companionOverlayController: CompanionOverlayController
         private set
+    lateinit var goalRepository: GoalRepository
+        private set
+    lateinit var focusSessionManager: FocusSessionManager
+        private set
+    lateinit var focusEngine: FocusEngine
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +62,19 @@ class LivingAiApp : Application() {
         companionStateMachine = CompanionStateMachine(appScope)
         companionOverlayController = InAppCompanionOverlayController()
 
+        goalRepository = DataStoreGoalRepository(this)
+        focusSessionManager = FocusSessionManager(appScope)
+        focusEngine = FocusEngine(
+            scope = appScope,
+            contextEngine = contextEngine,
+            goalRepository = goalRepository,
+            sessionManager = focusSessionManager,
+            distractionDetector = DistractionDetector(),
+            attentionManager = AttentionManager(),
+            companionStateMachine = companionStateMachine
+        )
+
         contextEngine.start()
+        focusEngine.start()
     }
 }
