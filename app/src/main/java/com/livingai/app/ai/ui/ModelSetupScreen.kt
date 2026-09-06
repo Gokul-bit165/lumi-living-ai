@@ -120,7 +120,13 @@ private fun RemoteFallbackSection(
 ) {
     var provider by remember(remoteSettings.provider) { mutableStateOf(remoteSettings.provider) }
     var apiKey by remember { mutableStateOf(remoteSettings.apiKey) }
-    var modelId by remember(remoteSettings.modelId) { mutableStateOf(remoteSettings.modelId) }
+    var modelId by remember(remoteSettings.modelId, remoteSettings.provider) {
+        val current = remoteSettings.modelId
+        val sanitized = if (remoteSettings.provider == RemoteProvider.GROQ && (current.startsWith("llama-3.1-") || current.startsWith("llama-3.3-"))) {
+            ""
+        } else current
+        mutableStateOf(sanitized)
+    }
 
     Text(text = "Cloud fallback (optional)", style = MaterialTheme.typography.titleMedium)
     Text(

@@ -39,21 +39,8 @@ class OpenAiCompatRemoteTextModel(
         val start = System.currentTimeMillis()
         var connection: HttpURLConnection? = null
         try {
-            val url = URL(settings.provider.baseUrl)
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "LivingAI-Android/1.0")
-                setRequestProperty("Authorization", "Bearer $apiKey")
-                if (settings.provider == RemoteProvider.OPENROUTER) {
-                    setRequestProperty("HTTP-Referer", "https://github.com/livingai/livingai")
-                    setRequestProperty("X-Title", "Living AI")
-                }
-                doOutput = true
-                connectTimeout = 20_000
-                readTimeout = 30_000
-            }
+            val keyPrefix = apiKey.take(6) + "..."
+            LivingAiLog.event("REMOTE_FALLBACK", "Starting request provider=${settings.provider.displayName} key=$keyPrefix len=${apiKey.length}")
 
             val targetModel = settings.effectiveModelId()
             LivingAiLog.event("REMOTE_FALLBACK", "POST url=${settings.provider.baseUrl} model=$targetModel")
@@ -68,7 +55,26 @@ class OpenAiCompatRemoteTextModel(
                 })
             }
 
-            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+            val jsonBytes = body.toString().toByteArray(Charsets.UTF_8)
+            val url = URL(settings.provider.baseUrl)
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("User-Agent", "LivingAI-Android/1.0")
+                setRequestProperty("Authorization", "Bearer $apiKey")
+                setRequestProperty("Connection", "close")
+                if (settings.provider == RemoteProvider.OPENROUTER) {
+                    setRequestProperty("HTTP-Referer", "https://github.com/livingai/livingai")
+                    setRequestProperty("X-Title", "Living AI")
+                }
+                doOutput = true
+                setFixedLengthStreamingMode(jsonBytes.size)
+                connectTimeout = 15_000
+                readTimeout = 20_000
+            }
+
+            connection.outputStream.use { it.write(jsonBytes) }
 
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
@@ -82,7 +88,15 @@ class OpenAiCompatRemoteTextModel(
                     raw.take(200)
                 }
                 LivingAiLog.event("REMOTE_FALLBACK", "HTTP $responseCode: $errMsg | raw=$raw")
-                return@withContext Result.failure(RuntimeException("HTTP $responseCode: $errMsg"))
+
+                val extraInfo = if (responseCode == 404) {
+                    val available = fetchAvailableModels(apiKey, settings.provider)
+                    if (available.isNotEmpty()) {
+                        " | Available models on your key: ${available.take(5).joinToString(", ")}"
+                    } else ""
+                } else ""
+
+                return@withContext Result.failure(RuntimeException("HTTP $responseCode: $errMsg$extraInfo"))
             }
 
             val json = JSONObject(raw)
@@ -104,6 +118,38 @@ class OpenAiCompatRemoteTextModel(
             Result.failure(e)
         } finally {
             connection?.disconnect()
+        }
+    }
+
+    private fun fetchAvailableModels(apiKey: String, provider: RemoteProvider): List<String> {
+        val modelsUrl = if (provider == RemoteProvider.GROQ) {
+            "https://api.groq.com/openai/v1/models"
+        } else {
+            "https://openrouter.ai/api/v1/models"
+        }
+        return try {
+            val conn = (URL(modelsUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("Authorization", "Bearer $apiKey")
+                setRequestProperty("User-Agent", "LivingAI-Android/1.0")
+                setRequestProperty("Connection", "close")
+                connectTimeout = 10_000
+                readTimeout = 10_000
+            }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.let { BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() } }.orEmpty()
+            conn.disconnect()
+            LivingAiLog.event("REMOTE_FALLBACK", "GET $modelsUrl -> HTTP $code: ${text.take(300)}")
+            if (code in 200..299) {
+                val data = JSONObject(text).optJSONArray("data") ?: JSONArray()
+                (0 until data.length()).mapNotNull { i -> data.optJSONObject(i)?.optString("id") }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            LivingAiLog.event("REMOTE_FALLBACK", "Failed to fetch models: ${e.message}")
+            emptyList()
         }
     }
 }

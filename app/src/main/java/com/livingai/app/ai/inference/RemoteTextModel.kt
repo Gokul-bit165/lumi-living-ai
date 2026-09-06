@@ -25,10 +25,10 @@ enum class RemoteProvider(
     GROQ(
         displayName = "Groq",
         baseUrl = "https://api.groq.com/openai/v1/chat/completions",
-        defaultModel = "llama-3.3-70b-versatile",
+        defaultModel = "openai/gpt-oss-120b",
         suggestedModels = listOf(
-            "llama-3.3-70b-versatile",
-            "openai/gpt-oss-20b"
+            "openai/gpt-oss-120b",
+            "allam-2-7b"
         )
     )
 }
@@ -40,7 +40,14 @@ data class RemoteAiSettings(
 ) {
     val cleanApiKey: String get() = apiKey.trim()
     val isConfigured: Boolean get() = cleanApiKey.isNotBlank()
-    fun effectiveModelId(): String = modelId.trim().ifBlank { provider.defaultModel }
+    fun effectiveModelId(): String {
+        val trimmed = modelId.trim()
+        if (trimmed.isBlank()) return provider.defaultModel
+        if (provider == RemoteProvider.GROQ && (trimmed.startsWith("llama-3.1-") || trimmed.startsWith("llama-3.3-"))) {
+            return provider.defaultModel
+        }
+        return trimmed
+    }
 }
 
 interface RemoteTextModel {
