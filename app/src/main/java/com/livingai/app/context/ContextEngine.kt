@@ -69,16 +69,16 @@ class ContextEngineImpl(
             }
         }
 
-        if (permissionManager.hasUsageAccess()) {
-            usagePollJob = scope.launch {
-                while (true) {
+        usagePollJob = scope.launch {
+            while (true) {
+                if (permissionManager.hasUsageAccess()) {
                     val app = usageStatsCollector.currentForegroundApp()
                     updateContext { it.copy(currentApp = app) }
-                    delay(usagePollIntervalMs)
+                } else {
+                    updateContext { it.copy(currentApp = null) }
                 }
+                delay(usagePollIntervalMs)
             }
-        } else {
-            LivingAiLog.event("CONTEXT_EVENT", "Usage access not granted — currentApp stays null")
         }
     }
 

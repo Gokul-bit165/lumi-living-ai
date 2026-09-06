@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.livingai.app.companion.CompanionBubble
 import com.livingai.app.context.UserContext
@@ -43,6 +44,8 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* re-checked reactively via PermissionManager on next composition pass */ }
 
+    private val hasUsageAccessState = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as LivingAiApp
@@ -53,18 +56,26 @@ class MainActivity : ComponentActivity() {
             requestActivityRecognition.launch(Manifest.permission.ACTIVITY_RECOGNITION)
         }
 
+        hasUsageAccessState.value = app.permissionManager.hasUsageAccess()
+
         setContent {
             MaterialTheme {
-                LivingAiRoot(app)
+                LivingAiRoot(app, hasUsageAccessState.value)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val app = application as LivingAiApp
+        hasUsageAccessState.value = app.permissionManager.hasUsageAccess()
     }
 }
 
 private enum class Screen { HOME, FOCUS }
 
 @Composable
-private fun LivingAiRoot(app: LivingAiApp) {
+private fun LivingAiRoot(app: LivingAiApp, hasUsageAccess: Boolean) {
     var screen by remember { mutableStateOf(Screen.HOME) }
     val context by app.contextEngine.currentContext.collectAsState()
     val companionState by app.companionStateMachine.state.collectAsState()
@@ -86,6 +97,7 @@ private fun LivingAiRoot(app: LivingAiApp) {
                     goal = goal,
                     sessionStatus = session?.status,
                     elapsedMs = elapsedMs,
+                    hasUsageAccess = hasUsageAccess,
                     onSetGoal = { title ->
                         scope.launch {
                             app.goalRepository.setActiveGoal(title, deadline = null, priority = GoalPriority.MEDIUM)
@@ -137,12 +149,14 @@ private fun HomeScreen(
     goal: com.livingai.app.focus.Goal?,
     sessionStatus: FocusSessionStatus?,
     elapsedMs: Long,
+    hasUsageAccess: Boolean,
     onSetGoal: (String) -> Unit,
     onStartFocus: () -> Unit,
     onResumeFocus: () -> Unit
 ) {
     var showDebug by remember { mutableStateOf(true) }
     var goalInput by remember { mutableStateOf("") }
+    val localContext = LocalContext.current
 
     Column(modifier = Modifier.padding(16.dp)) {
         Text(text = "Living AI", style = MaterialTheme.typography.headlineMedium)
@@ -176,11 +190,17 @@ private fun HomeScreen(
             }
         }
 
-        if (!app.permissionManager.hasUsageAccess()) {
+        if (!hasUsageAccess) {
             Column(modifier = Modifier.padding(top = 16.dp)) {
                 Text("Distraction detection needs usage access to see which app you're in.")
                 Button(
-                    onClick = { app.startActivity(app.permissionManager.usageAccessSettingsIntent()) },
+                    onClick = {
+                        try {
+                            localContext.startActivity(app.permissionManager.usageAccessSettingsIntent())
+                        } catch (e: Exception) {
+                            com.livingai.app.core.LivingAiLog.event("PERMISSION", "Failed to launch usage access settings: ${e.message}")
+                        }
+                    },
                     modifier = Modifier.padding(top = 4.dp)
                 ) { Text("Grant usage access") }
             }
@@ -191,7 +211,7 @@ private fun HomeScreen(
         }
 
         if (showDebug) {
-            DebugPanel(context, app, goal, sessionStatus, elapsedMs)
+            DebugPanel(context, app, goal, sessionStatus, elapsedMs, hasUsageAccess)
         }
     }
 }
@@ -202,7 +222,8 @@ private fun DebugPanel(
     app: LivingAiApp,
     goal: com.livingai.app.focus.Goal?,
     sessionStatus: FocusSessionStatus?,
-    elapsedMs: Long
+    elapsedMs: Long,
+    hasUsageAccess: Boolean
 ) {
     val permissionManager: PermissionManager = app.permissionManager
     Column(
@@ -219,7 +240,7 @@ private fun DebugPanel(
         Text(text = "thermal: ${context.deviceState.thermal}")
         Text(text = "sourceSignals: ${context.sourceSignals.joinToString()}")
         Text(text = "activityRecognitionGranted: ${permissionManager.hasActivityRecognition()}")
-        Text(text = "usageAccessGranted: ${permissionManager.hasUsageAccess()}")
+        Text(text = "usageAccessGranted: $hasUsageAccess")
         Text(text = "cooldownRemainingMs: ${app.focusEngine.cooldownRemainingMs()}")
     }
 }
