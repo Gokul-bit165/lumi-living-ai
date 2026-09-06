@@ -12,6 +12,7 @@ import com.livingai.app.ai.prompts.PromptBuilder
 import com.livingai.app.ai.vision.LocalVisionModel
 import com.livingai.app.core.LivingAiLog
 import com.livingai.app.core.RuntimeStatus
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
 /**
@@ -30,6 +31,9 @@ class InferenceRouter(
     private val networkAvailable: () -> Boolean = { false },
     private val runtimeStatus: () -> RuntimeStatus
 ) {
+    private val _lastResponse = kotlinx.coroutines.flow.MutableStateFlow<AIResponse?>(null)
+    val lastResponse: kotlinx.coroutines.flow.StateFlow<AIResponse?> = _lastResponse.asStateFlow()
+
     suspend fun route(request: AIRequest): AIResponse {
         val runtimeStatus = runtimeStatus()
         val modelState = textModel.status.value.state
@@ -39,7 +43,7 @@ class InferenceRouter(
         if (tier == ModelTier.RULE) {
             val message = policy.degradedMessage(runtimeStatus, modelState)
             LivingAiLog.event("INFERENCE_REQUEST", "tier=RULE (degraded) reason=$message")
-            return AIResponse(
+            val degraded = AIResponse(
                 text = message,
                 emotion = CompanionEmotion.CONFUSED,
                 tier = ModelTier.RULE,
@@ -47,25 +51,31 @@ class InferenceRouter(
                 loadMs = 0,
                 inferenceMs = 0
             )
+            _lastResponse.value = degraded
+            return degraded
         }
 
         val loadStart = System.currentTimeMillis()
         var extractedText: String? = null
+        var detectedObjects: List<String> = emptyList()
         if (request.imageBytes != null) {
             val bitmap = BitmapFactory.decodeByteArray(request.imageBytes, 0, request.imageBytes.size)
             if (bitmap != null) {
                 extractedText = runVision(bitmap)
+                detectedObjects = runVisionLabels(bitmap)
             }
         }
         val loadMs = System.currentTimeMillis() - loadStart
 
-        val prompt = PromptBuilder.build(request, extractedText, relevantMemory = emptyList())
+        val prompt = PromptBuilder.build(request, extractedText, detectedObjects, relevantMemory = emptyList())
 
-        return if (tier == ModelTier.REMOTE_FALLBACK) {
+        val result = if (tier == ModelTier.REMOTE_FALLBACK) {
             routeRemote(prompt, loadMs, runtimeStatus, modelState)
         } else {
             routeLocal(prompt, loadMs)
         }
+        _lastResponse.value = result
+        return result
     }
 
     private suspend fun routeLocal(prompt: String, loadMs: Long): AIResponse {
@@ -147,6 +157,9 @@ class InferenceRouter(
 
     private suspend fun runVision(bitmap: Bitmap): String? =
         visionModel.extractText(bitmap).getOrNull()?.takeIf { it.isNotBlank() }
+
+    private suspend fun runVisionLabels(bitmap: Bitmap): List<String> =
+        visionModel.extractLabels(bitmap).getOrDefault(emptyList())
 
     /** Small local models (and some remote ones) are unreliable at strict JSON — parse leniently, never crash on it. */
     private fun parseStructured(raw: String): Triple<String, CompanionEmotion, Boolean> {

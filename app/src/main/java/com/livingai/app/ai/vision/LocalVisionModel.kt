@@ -6,4 +6,5 @@ import android.graphics.Bitmap
 interface LocalVisionModel {
     val modelName: String
     suspend fun extractText(bitmap: Bitmap): Result<String>
+    suspend fun extractLabels(bitmap: Bitmap, minConfidence: Float = 0.70f): Result<List<String>> = Result.success(emptyList())
 }

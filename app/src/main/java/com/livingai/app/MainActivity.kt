@@ -351,12 +351,12 @@ private fun DebugPanel(
         Text(text = "RUNTIME: ${app.textModel.runtimeName}")
         Text(text = "MODEL_STATE: ${modelStatus.state}")
         Text(text = "NETWORK: ${if (networkOn) "ON" else "OFF"}")
-        Text(text = "REMOTE_FALLBACK_CONFIGURED: ${remoteSettings.isConfigured} (${remoteSettings.provider.displayName})")
-        if (lastAiResponse != null) {
-            Text(text = "LAST_TIER: ${lastAiResponse.tier}")
-            Text(text = "LAST_LOAD_MS: ${lastAiResponse.loadMs}")
-            Text(text = "LAST_INFERENCE_MS: ${lastAiResponse.inferenceMs}")
-            Text(text = "LAST_STRUCTURED: ${lastAiResponse.wasStructured}")
+        val aiResponse = app.inferenceRouter.lastResponse.collectAsState().value ?: lastAiResponse
+        if (aiResponse != null) {
+            Text(text = "LAST_TIER: ${aiResponse.tier}")
+            Text(text = "LAST_LOAD_MS: ${aiResponse.loadMs}")
+            Text(text = "LAST_INFERENCE_MS: ${aiResponse.inferenceMs}")
+            Text(text = "LAST_STRUCTURED: ${aiResponse.wasStructured}")
         }
     }
 }

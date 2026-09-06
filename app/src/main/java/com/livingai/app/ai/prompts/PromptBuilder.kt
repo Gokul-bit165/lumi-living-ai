@@ -17,13 +17,21 @@ object PromptBuilder {
         {"response": "<your reply>", "emotion": "THINKING|EXPLAINING|HAPPY|CONFUSED"}
     """.trimIndent()
 
-    fun build(request: AIRequest, extractedImageText: String?, relevantMemory: List<String>): String {
+    fun build(
+        request: AIRequest,
+        extractedImageText: String?,
+        detectedObjects: List<String> = emptyList(),
+        relevantMemory: List<String> = emptyList()
+    ): String {
         val context = buildString {
             if (request.focusActive && request.goalTitle != null) {
                 append("The user is currently focusing on: \"${request.goalTitle}\".\n")
             }
             if (relevantMemory.isNotEmpty()) {
                 append("Relevant memory: ${relevantMemory.joinToString("; ")}.\n")
+            }
+            if (detectedObjects.isNotEmpty()) {
+                append("Objects detected in camera: ${detectedObjects.joinToString(", ")}.\n")
             }
             if (!extractedImageText.isNullOrBlank()) {
                 append("Text extracted from the user's camera image:\n\"\"\"\n$extractedImageText\n\"\"\"\n")

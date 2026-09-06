@@ -39,9 +39,13 @@ private class FakeTextModel(
     override fun close() = Unit
 }
 
-private class FakeVisionModel : LocalVisionModel {
+private class FakeVisionModel(
+    private val extractedTextResult: String = "extracted text",
+    private val labelsResult: List<String> = emptyList()
+) : LocalVisionModel {
     override val modelName = "fake-vision"
-    override suspend fun extractText(bitmap: Bitmap): Result<String> = Result.success("extracted text")
+    override suspend fun extractText(bitmap: Bitmap): Result<String> = Result.success(extractedTextResult)
+    override suspend fun extractLabels(bitmap: Bitmap, minConfidence: Float): Result<List<String>> = Result.success(labelsResult)
 }
 
 private class FakeRemoteTextModel(
@@ -195,6 +199,18 @@ class InferenceRouterTest {
         assertEquals(ModelTier.LOCAL_TEXT, response.tier)
         assertEquals(null, remoteModel.lastPrompt)
         assertTrue(textModel.lastPrompt != null)
+    }
+
+    @Test
+    fun `router updates lastResponse StateFlow on successful route`() = runTest {
+        val textModel = FakeTextModel()
+        val router = InferenceRouter(textModel, FakeVisionModel()) { RuntimeStatus.GREEN }
+
+        assertEquals(null, router.lastResponse.value)
+        val response = router.route(textRequest("Hello Lumi"))
+
+        assertEquals(response, router.lastResponse.value)
+        assertEquals(ModelTier.LOCAL_TEXT, router.lastResponse.value?.tier)
     }
 
     private fun textRequest(text: String) = AIRequest(

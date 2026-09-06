@@ -61,8 +61,10 @@ dependencies {
     implementation("androidx.camera:camera-view:1.5.1")
     // Real, ungated, bundled-model on-device OCR (no download step, works offline immediately).
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Real on-device Image Labeling (400+ visual concepts/objects with >=70% confidence threshold).
+    implementation("com.google.mlkit:image-labeling:17.0.9")
     // Real on-device LLM runtime (Google AI Edge / MediaPipe LLM Inference API).
-    implementation("com.google.mediapipe:tasks-genai:0.10.21")
+    implementation("com.google.mediapipe:tasks-genai:0.10.35")
     // Keystore-backed encrypted storage for the user's own cloud-fallback API key (Phase 9b).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
