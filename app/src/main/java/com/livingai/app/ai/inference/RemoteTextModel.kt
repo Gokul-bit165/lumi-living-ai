@@ -6,16 +6,30 @@ package com.livingai.app.ai.inference
  * This is never the primary path and must never be logged or reported as "local" — see
  * [com.livingai.app.ai.model.ModelTier.REMOTE_FALLBACK].
  */
-enum class RemoteProvider(val displayName: String, val baseUrl: String, val defaultModel: String) {
+enum class RemoteProvider(
+    val displayName: String,
+    val baseUrl: String,
+    val defaultModel: String,
+    val suggestedModels: List<String>
+) {
     OPENROUTER(
         displayName = "OpenRouter",
         baseUrl = "https://openrouter.ai/api/v1/chat/completions",
-        defaultModel = "meta-llama/llama-3.1-8b-instruct:free"
+        defaultModel = "meta-llama/llama-3.1-8b-instruct:free",
+        suggestedModels = listOf(
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "google/gemini-2.0-flash-exp:free",
+            "mistralai/mistral-7b-instruct:free"
+        )
     ),
     GROQ(
         displayName = "Groq",
         baseUrl = "https://api.groq.com/openai/v1/chat/completions",
-        defaultModel = "llama-3.1-8b-instant"
+        defaultModel = "llama-3.3-70b-versatile",
+        suggestedModels = listOf(
+            "llama-3.3-70b-versatile",
+            "openai/gpt-oss-20b"
+        )
     )
 }
 

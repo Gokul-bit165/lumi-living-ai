@@ -120,8 +120,14 @@ class InferenceRouter(
                         "Cloud fallback authentication failed (401) — please verify your ${remote.runtimeName} key in AI brain settings."
                     error.message?.contains("429") == true ->
                         "Cloud fallback rate limit reached (429) — please try again in a few seconds."
-                    error.message?.contains("404") == true ->
-                        "Cloud fallback model not found (404) — please verify the model ID in AI brain settings."
+                    error.message?.contains("404") == true -> {
+                        val detail = error.message?.removePrefix("HTTP 404:")?.trim()?.takeIf { it.isNotBlank() }
+                        if (detail != null) {
+                            "Cloud fallback model not found (404: $detail) — please check model ID in AI brain settings."
+                        } else {
+                            "Cloud fallback model not found (404) — please verify the model ID in AI brain settings."
+                        }
+                    }
                     !error.message.isNullOrBlank() ->
                         "Cloud fallback error (${error.message}) — please try again."
                     else ->

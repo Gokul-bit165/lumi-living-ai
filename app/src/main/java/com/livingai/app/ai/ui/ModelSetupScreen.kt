@@ -1,5 +1,6 @@
 package com.livingai.app.ai.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -132,7 +134,12 @@ private fun RemoteFallbackSection(
         RemoteProvider.entries.forEach { p ->
             FilterChip(
                 selected = provider == p,
-                onClick = { provider = p },
+                onClick = {
+                    if (provider != p) {
+                        provider = p
+                        modelId = ""
+                    }
+                },
                 label = { Text(p.displayName) }
             )
         }
@@ -149,9 +156,22 @@ private fun RemoteFallbackSection(
     OutlinedTextField(
         value = modelId,
         onValueChange = { modelId = it },
-        label = { Text("Model id (optional, default: ${provider.defaultModel})") },
+        label = { Text("Model id (default: ${provider.defaultModel})") },
         modifier = Modifier.fillMaxWidth()
     )
+
+    Text("Quick select model:", style = MaterialTheme.typography.labelSmall)
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        provider.suggestedModels.forEach { suggested ->
+            SuggestionChip(
+                onClick = { modelId = suggested },
+                label = { Text(suggested, style = MaterialTheme.typography.labelSmall) }
+            )
+        }
+    }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(
@@ -162,6 +182,7 @@ private fun RemoteFallbackSection(
         if (remoteSettings.isConfigured) {
             TextButton(onClick = {
                 apiKey = ""
+                modelId = ""
                 onSave(RemoteAiSettings())
             }) { Text("Clear") }
         }

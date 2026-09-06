@@ -55,8 +55,11 @@ class OpenAiCompatRemoteTextModel(
                 readTimeout = 30_000
             }
 
+            val targetModel = settings.effectiveModelId()
+            LivingAiLog.event("REMOTE_FALLBACK", "POST url=${settings.provider.baseUrl} model=$targetModel")
+
             val body = JSONObject().apply {
-                put("model", settings.effectiveModelId())
+                put("model", targetModel)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "user")
@@ -78,7 +81,7 @@ class OpenAiCompatRemoteTextModel(
                 } catch (_: Exception) {
                     raw.take(200)
                 }
-                LivingAiLog.event("REMOTE_FALLBACK", "HTTP $responseCode: $errMsg")
+                LivingAiLog.event("REMOTE_FALLBACK", "HTTP $responseCode: $errMsg | raw=$raw")
                 return@withContext Result.failure(RuntimeException("HTTP $responseCode: $errMsg"))
             }
 
