@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -197,13 +199,18 @@ private fun LivingAiRoot(app: LivingAiApp, hasUsageAccess: Boolean, onRequestCam
                     }
                 )
 
-                Screen.MODEL_SETUP -> ModelSetupScreen(
-                    status = modelStatus,
-                    modelName = app.textModel.modelName,
-                    runtimeName = app.textModel.runtimeName,
-                    onDownload = { token -> scope.launch { app.textModel.downloadAndInitialize(token) } },
-                    onBack = { screen = Screen.HOME }
-                )
+                Screen.MODEL_SETUP -> {
+                    val remoteSettings by app.remoteAiSettingsRepository.settings.collectAsState()
+                    ModelSetupScreen(
+                        status = modelStatus,
+                        modelName = app.textModel.modelName,
+                        runtimeName = app.textModel.runtimeName,
+                        onDownload = { token -> scope.launch { app.textModel.downloadAndInitialize(token) } },
+                        remoteSettings = remoteSettings,
+                        onSaveRemoteSettings = { app.remoteAiSettingsRepository.save(it) },
+                        onBack = { screen = Screen.HOME }
+                    )
+                }
             }
 
             CompanionBubble(
@@ -242,7 +249,7 @@ private fun HomeScreen(
     var goalInput by remember { mutableStateOf("") }
     val localContext = LocalContext.current
 
-    Column(modifier = Modifier.padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Text(text = "Living AI", style = MaterialTheme.typography.headlineMedium)
         Text(text = "Your phone doesn't just respond to you. It understands your day.")
 
@@ -318,6 +325,7 @@ private fun DebugPanel(
     val permissionManager: PermissionManager = app.permissionManager
     val modelStatus by app.textModel.status.collectAsState()
     val runtimeStatus by app.performanceMonitor.runtimeStatus.collectAsState()
+    val remoteSettings by app.remoteAiSettingsRepository.settings.collectAsState()
     val localContext = LocalContext.current
     val networkOn = remember(context.timestamp) { isNetworkAvailable(localContext) }
     Column(
@@ -342,8 +350,8 @@ private fun DebugPanel(
         Text(text = "MODEL: ${app.textModel.modelName}")
         Text(text = "RUNTIME: ${app.textModel.runtimeName}")
         Text(text = "MODEL_STATE: ${modelStatus.state}")
-        Text(text = "LOCAL: YES")
         Text(text = "NETWORK: ${if (networkOn) "ON" else "OFF"}")
+        Text(text = "REMOTE_FALLBACK_CONFIGURED: ${remoteSettings.isConfigured} (${remoteSettings.provider.displayName})")
         if (lastAiResponse != null) {
             Text(text = "LAST_TIER: ${lastAiResponse.tier}")
             Text(text = "LAST_LOAD_MS: ${lastAiResponse.loadMs}")

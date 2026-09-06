@@ -1,9 +1,13 @@
 package com.livingai.app
 
 import android.app.Application
+import android.content.Context
 import com.livingai.app.ai.inference.LocalTextModel
 import com.livingai.app.ai.inference.MediaPipeLocalTextModel
+import com.livingai.app.ai.inference.OpenAiCompatRemoteTextModel
+import com.livingai.app.ai.inference.RemoteTextModel
 import com.livingai.app.ai.routing.InferenceRouter
+import com.livingai.app.ai.settings.RemoteAiSettingsRepository
 import com.livingai.app.ai.vision.LocalVisionModel
 import com.livingai.app.ai.vision.MlKitLocalVisionModel
 import com.livingai.app.camera.CameraCaptureController
@@ -61,6 +65,10 @@ class LivingAiApp : Application() {
         private set
     lateinit var visionModel: LocalVisionModel
         private set
+    lateinit var remoteAiSettingsRepository: RemoteAiSettingsRepository
+        private set
+    lateinit var remoteModel: RemoteTextModel
+        private set
     lateinit var inferenceRouter: InferenceRouter
         private set
     lateinit var cameraCaptureController: CameraCaptureController
@@ -101,9 +109,13 @@ class LivingAiApp : Application() {
 
         textModel = MediaPipeLocalTextModel(this)
         visionModel = MlKitLocalVisionModel()
+        remoteAiSettingsRepository = RemoteAiSettingsRepository(this)
+        remoteModel = OpenAiCompatRemoteTextModel(remoteAiSettingsRepository)
         inferenceRouter = InferenceRouter(
             textModel = textModel,
             visionModel = visionModel,
+            remoteModel = remoteModel,
+            networkAvailable = { isNetworkAvailable(this) },
             runtimeStatus = { performanceMonitor.runtimeStatus.value }
         )
         cameraCaptureController = CameraCaptureController(this)
@@ -113,5 +125,12 @@ class LivingAiApp : Application() {
         contextEngine.start()
         focusEngine.start()
         appScope.launch { textModel.initialize() }
+    }
+
+    private fun isNetworkAvailable(context: Context): Boolean {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        val network = cm.activeNetwork ?: return false
+        val capabilities = cm.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

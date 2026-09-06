@@ -2,10 +2,15 @@ package com.livingai.app.ai.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Divider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -21,6 +26,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.livingai.app.ai.inference.ModelLoadState
 import com.livingai.app.ai.inference.ModelStatus
+import com.livingai.app.ai.inference.RemoteAiSettings
+import com.livingai.app.ai.inference.RemoteProvider
 
 @Composable
 fun ModelSetupScreen(
@@ -28,13 +35,15 @@ fun ModelSetupScreen(
     modelName: String,
     runtimeName: String,
     onDownload: (token: String) -> Unit,
+    remoteSettings: RemoteAiSettings,
+    onSaveRemoteSettings: (RemoteAiSettings) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var token by remember { mutableStateOf("") }
 
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         TextButton(onClick = onBack) { Text("< Home") }
@@ -94,6 +103,67 @@ fun ModelSetupScreen(
                     Text("Retry download")
                 }
             }
+        }
+
+        Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+        RemoteFallbackSection(remoteSettings = remoteSettings, onSave = onSaveRemoteSettings)
+    }
+}
+
+@Composable
+private fun RemoteFallbackSection(
+    remoteSettings: RemoteAiSettings,
+    onSave: (RemoteAiSettings) -> Unit
+) {
+    var provider by remember(remoteSettings.provider) { mutableStateOf(remoteSettings.provider) }
+    var apiKey by remember { mutableStateOf(remoteSettings.apiKey) }
+    var modelId by remember(remoteSettings.modelId) { mutableStateOf(remoteSettings.modelId) }
+
+    Text(text = "Cloud fallback (optional)", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Only used when Lumi's offline brain can't run right now (e.g. the phone is too hot, or " +
+            "the model isn't downloaded yet) AND you're online. Never the primary path — every " +
+            "answer from this is clearly tagged REMOTE_FALLBACK in the debug panel, never \"local\"."
+    )
+    Text(if (remoteSettings.isConfigured) "Status: configured (${remoteSettings.provider.displayName})" else "Status: not configured")
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        RemoteProvider.entries.forEach { p ->
+            FilterChip(
+                selected = provider == p,
+                onClick = { provider = p },
+                label = { Text(p.displayName) }
+            )
+        }
+    }
+
+    OutlinedTextField(
+        value = apiKey,
+        onValueChange = { apiKey = it },
+        label = { Text("${provider.displayName} API key") },
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = modelId,
+        onValueChange = { modelId = it },
+        label = { Text("Model id (optional, default: ${provider.defaultModel})") },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = { onSave(RemoteAiSettings(provider = provider, apiKey = apiKey, modelId = modelId)) },
+            enabled = apiKey.isNotBlank()
+        ) { Text("Save cloud fallback") }
+
+        if (remoteSettings.isConfigured) {
+            TextButton(onClick = {
+                apiKey = ""
+                onSave(RemoteAiSettings())
+            }) { Text("Clear") }
         }
     }
 }

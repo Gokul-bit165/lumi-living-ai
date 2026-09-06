@@ -5,6 +5,7 @@ import com.livingai.app.ai.inference.GenerationResult
 import com.livingai.app.ai.inference.LocalTextModel
 import com.livingai.app.ai.inference.ModelLoadState
 import com.livingai.app.ai.inference.ModelStatus
+import com.livingai.app.ai.inference.RemoteTextModel
 import com.livingai.app.ai.model.AIRequest
 import com.livingai.app.ai.model.AIRequestType
 import com.livingai.app.ai.model.ModelTier
@@ -41,6 +42,19 @@ private class FakeTextModel(
 private class FakeVisionModel : LocalVisionModel {
     override val modelName = "fake-vision"
     override suspend fun extractText(bitmap: Bitmap): Result<String> = Result.success("extracted text")
+}
+
+private class FakeRemoteTextModel(
+    private val configured: Boolean = true,
+    private val response: Result<GenerationResult> = Result.success(GenerationResult("hi from the cloud", 250))
+) : RemoteTextModel {
+    override val runtimeName = "fake-cloud-provider"
+    var lastPrompt: String? = null
+    override suspend fun isConfigured(): Boolean = configured
+    override suspend fun generate(prompt: String): Result<GenerationResult> {
+        lastPrompt = prompt
+        return response
+    }
 }
 
 class InferenceRouterTest {
@@ -104,6 +118,83 @@ class InferenceRouterTest {
         assertEquals(ModelTier.LOCAL_TEXT, response.tier)
         assertFalse(response.wasStructured)
         assertEquals(0, response.inferenceMs)
+    }
+
+    @Test
+    fun `local model unusable but remote configured and online routes to REMOTE_FALLBACK, tagged as such`() = runTest {
+        val textModel = FakeTextModel(initialState = ModelLoadState.NOT_DOWNLOADED)
+        val remoteModel = FakeRemoteTextModel()
+        val router = InferenceRouter(
+            textModel = textModel,
+            visionModel = FakeVisionModel(),
+            remoteModel = remoteModel,
+            networkAvailable = { true },
+            runtimeStatus = { RuntimeStatus.GREEN }
+        )
+
+        val response = router.route(textRequest("Explain this"))
+
+        assertEquals(ModelTier.REMOTE_FALLBACK, response.tier)
+        assertEquals("hi from the cloud", response.text)
+        assertEquals(250, response.inferenceMs)
+        assertEquals(null, textModel.lastPrompt) // real local model never invoked
+        assertTrue(remoteModel.lastPrompt != null)
+    }
+
+    @Test
+    fun `remote fallback is skipped while offline even when configured, degrading to RULE instead`() = runTest {
+        val textModel = FakeTextModel(initialState = ModelLoadState.NOT_DOWNLOADED)
+        val remoteModel = FakeRemoteTextModel()
+        val router = InferenceRouter(
+            textModel = textModel,
+            visionModel = FakeVisionModel(),
+            remoteModel = remoteModel,
+            networkAvailable = { false },
+            runtimeStatus = { RuntimeStatus.GREEN }
+        )
+
+        val response = router.route(textRequest("Explain this"))
+
+        assertEquals(ModelTier.RULE, response.tier)
+        assertEquals(null, remoteModel.lastPrompt)
+    }
+
+    @Test
+    fun `remote fallback failure returns a friendly degraded response tagged REMOTE_FALLBACK, not a crash`() = runTest {
+        val textModel = FakeTextModel(initialState = ModelLoadState.NOT_DOWNLOADED)
+        val remoteModel = FakeRemoteTextModel(response = Result.failure(RuntimeException("HTTP 401")))
+        val router = InferenceRouter(
+            textModel = textModel,
+            visionModel = FakeVisionModel(),
+            remoteModel = remoteModel,
+            networkAvailable = { true },
+            runtimeStatus = { RuntimeStatus.GREEN }
+        )
+
+        val response = router.route(textRequest("Explain this"))
+
+        assertEquals(ModelTier.REMOTE_FALLBACK, response.tier)
+        assertFalse(response.wasStructured)
+        assertEquals(0, response.inferenceMs)
+    }
+
+    @Test
+    fun `a ready local model is preferred over remote fallback even when both are available`() = runTest {
+        val textModel = FakeTextModel()
+        val remoteModel = FakeRemoteTextModel()
+        val router = InferenceRouter(
+            textModel = textModel,
+            visionModel = FakeVisionModel(),
+            remoteModel = remoteModel,
+            networkAvailable = { true },
+            runtimeStatus = { RuntimeStatus.GREEN }
+        )
+
+        val response = router.route(textRequest("Explain this"))
+
+        assertEquals(ModelTier.LOCAL_TEXT, response.tier)
+        assertEquals(null, remoteModel.lastPrompt)
+        assertTrue(textModel.lastPrompt != null)
     }
 
     private fun textRequest(text: String) = AIRequest(

@@ -34,4 +34,40 @@ class InferencePolicyTest {
         assertEquals(true, policy.degradedMessage(RuntimeStatus.RED, ModelLoadState.READY).contains("battery/thermal"))
         assertEquals(true, policy.degradedMessage(RuntimeStatus.GREEN, ModelLoadState.NOT_DOWNLOADED).contains("Settings"))
     }
+
+    @Test
+    fun `local model unusable but remote configured and online falls back to REMOTE_FALLBACK`() {
+        assertEquals(
+            ModelTier.REMOTE_FALLBACK,
+            policy.selectTier(RuntimeStatus.RED, ModelLoadState.READY, remoteConfigured = true, networkAvailable = true)
+        )
+        assertEquals(
+            ModelTier.REMOTE_FALLBACK,
+            policy.selectTier(RuntimeStatus.GREEN, ModelLoadState.NOT_DOWNLOADED, remoteConfigured = true, networkAvailable = true)
+        )
+    }
+
+    @Test
+    fun `remote fallback is never used while offline even if configured`() {
+        assertEquals(
+            ModelTier.RULE,
+            policy.selectTier(RuntimeStatus.RED, ModelLoadState.READY, remoteConfigured = true, networkAvailable = false)
+        )
+    }
+
+    @Test
+    fun `remote fallback is never used when not configured`() {
+        assertEquals(
+            ModelTier.RULE,
+            policy.selectTier(RuntimeStatus.RED, ModelLoadState.READY, remoteConfigured = false, networkAvailable = true)
+        )
+    }
+
+    @Test
+    fun `a ready local model on GREEN is always preferred over remote fallback`() {
+        assertEquals(
+            ModelTier.LOCAL_TEXT,
+            policy.selectTier(RuntimeStatus.GREEN, ModelLoadState.READY, remoteConfigured = true, networkAvailable = true)
+        )
+    }
 }

@@ -12,7 +12,7 @@ object LivingAiLog {
 
     fun event(type: String, message: String) {
         try {
-            Log.d(TAG, "[$type] $message")
+            Log.i(TAG, "[$type] $message")
         } catch (_: RuntimeException) {
             // android.util.Log is unavailable in plain JVM unit tests (no Robolectric) —
             // fall back so test runs don't crash on logging alone.
