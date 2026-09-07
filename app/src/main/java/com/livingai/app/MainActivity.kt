@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.livingai.app.ai.model.AIRequest
 import com.livingai.app.ai.model.AIRequestType
+import com.livingai.app.ai.model.ModelTier
 import com.livingai.app.ai.ui.ModelSetupScreen
 import com.livingai.app.camera.ui.CameraHelpScreen
 import com.livingai.app.companion.CompanionBubble
@@ -347,11 +348,32 @@ private fun DebugPanel(
         Text(text = "micGranted: ${permissionManager.hasRecordAudio()}")
         Text(text = "cooldownRemainingMs: ${app.focusEngine.cooldownRemainingMs()}")
         Text(text = "runtimeStatus: $runtimeStatus")
-        Text(text = "MODEL: ${app.textModel.modelName}")
+        Text(text = "VISION: Local Pixel Perception")
+        Text(text = "MODEL: EfficientDet-Lite0 (MediaPipe Tasks Vision 0.10.14)")
+        val aiResponse = app.inferenceRouter.lastResponse.collectAsState().value ?: lastAiResponse
+        val visual = aiResponse?.visualEvidence
+        if (visual != null) {
+            Text(text = "LATENCY: ${visual.visionModelLatencyMs} ms (OCR: ${visual.ocrLatencyMs} ms)")
+            val detectionsStr = if (visual.detections.isNotEmpty()) {
+                visual.detections.joinToString(" ") { "${it.label} ${(it.confidence * 100).toInt()}%" }
+            } else if (visual.labels.isNotEmpty()) {
+                visual.labels.take(3).joinToString(", ")
+            } else {
+                "none"
+            }
+            Text(text = "DETECTIONS: $detectionsStr")
+            Text(text = "OCR: ${visual.ocrText?.take(30)?.replace("\n", " ") ?: "none"}")
+            Text(text = "EVIDENCE: ${visual.confidenceLevel}")
+        } else {
+            Text(text = "DETECTIONS: none")
+            Text(text = "EVIDENCE: NO_RELIABLE_EVIDENCE")
+        }
+        Text(text = "LLM: ${app.textModel.modelName}")
+        Text(text = "EXECUTION: ${if (aiResponse?.tier == ModelTier.REMOTE_FALLBACK) "REMOTE" else "LOCAL"}")
         Text(text = "RUNTIME: ${app.textModel.runtimeName}")
         Text(text = "MODEL_STATE: ${modelStatus.state}")
-        Text(text = "NETWORK: ${if (networkOn) "ON" else "OFF"}")
-        val aiResponse = app.inferenceRouter.lastResponse.collectAsState().value ?: lastAiResponse
+        Text(text = "MODEL_LOAD_MS: ${modelStatus.loadMs}")
+        Text(text = "NETWORK: ${if (networkOn) "ONLINE" else "OFFLINE"}")
         if (aiResponse != null) {
             Text(text = "LAST_TIER: ${aiResponse.tier}")
             Text(text = "LAST_LOAD_MS: ${aiResponse.loadMs}")

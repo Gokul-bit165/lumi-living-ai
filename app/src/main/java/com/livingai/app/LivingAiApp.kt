@@ -9,7 +9,7 @@ import com.livingai.app.ai.inference.RemoteTextModel
 import com.livingai.app.ai.routing.InferenceRouter
 import com.livingai.app.ai.settings.RemoteAiSettingsRepository
 import com.livingai.app.ai.vision.LocalVisionModel
-import com.livingai.app.ai.vision.MlKitLocalVisionModel
+import com.livingai.app.ai.vision.LocalVisionModelProvider
 import com.livingai.app.camera.CameraCaptureController
 import com.livingai.app.companion.CompanionOverlayController
 import com.livingai.app.companion.CompanionStateMachine
@@ -108,7 +108,7 @@ class LivingAiApp : Application() {
         )
 
         textModel = MediaPipeLocalTextModel(this)
-        visionModel = MlKitLocalVisionModel()
+        visionModel = LocalVisionModelProvider(this)
         remoteAiSettingsRepository = RemoteAiSettingsRepository(this)
         remoteModel = OpenAiCompatRemoteTextModel(remoteAiSettingsRepository)
         inferenceRouter = InferenceRouter(

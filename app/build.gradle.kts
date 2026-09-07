@@ -65,6 +65,8 @@ dependencies {
     implementation("com.google.mlkit:image-labeling:17.0.9")
     // Real on-device LLM runtime (Google AI Edge / MediaPipe LLM Inference API).
     implementation("com.google.mediapipe:tasks-genai:0.10.35")
+    // Real on-device compact pixel perception runtime (Google AI Edge / MediaPipe Tasks Vision).
+    implementation("com.google.mediapipe:tasks-vision:0.10.14")
     // Keystore-backed encrypted storage for the user's own cloud-fallback API key (Phase 9b).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 

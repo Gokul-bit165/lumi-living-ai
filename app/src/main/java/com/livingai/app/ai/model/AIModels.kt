@@ -7,10 +7,10 @@ enum class AIRequestType { CAMERA_QUESTION, VOICE_QUESTION, TEXT_QUESTION }
 
 data class AIRequest(
     val type: AIRequestType,
-    val userText: String?,
-    val imageBytes: ByteArray?,
-    val goalTitle: String?,
-    val focusActive: Boolean
+    val userText: String? = null,
+    val imageBytes: ByteArray? = null,
+    val goalTitle: String? = null,
+    val focusActive: Boolean = false
 )
 
 enum class CompanionEmotion { THINKING, EXPLAINING, HAPPY, CONFUSED, WARNING }
@@ -22,7 +22,8 @@ data class AIResponse(
     val tier: ModelTier,
     val wasStructured: Boolean,
     val loadMs: Long,
-    val inferenceMs: Long
+    val inferenceMs: Long,
+    val visualEvidence: com.livingai.app.ai.vision.VisualEvidence? = null
 )
 
 sealed class AIError {

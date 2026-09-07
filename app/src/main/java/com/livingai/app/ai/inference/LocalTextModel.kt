@@ -8,7 +8,8 @@ data class ModelStatus(
     val state: ModelLoadState,
     val downloadProgressBytes: Long = 0L,
     val downloadTotalBytes: Long = -1L,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val loadMs: Long = 0L
 )
 
 /**
